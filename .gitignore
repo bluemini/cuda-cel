@@ -1,0 +1,10 @@
+
+/__pycache__
+/2012-11-13 - CHS_Connection_Checks.xlsx
+/design_check.xml
+*.sublime-project
+*.sublime-workspace
+/jsport_nonEAT.py
+*.out
+/parsetab.py
+*.pkl
