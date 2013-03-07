@@ -4,6 +4,70 @@ import math
 import excel_lang
 import pickle
 
+class ExcelWB():
+
+	def __init__(self):
+		self.xlData = {}
+		self.xlData["namedRanges"] = []
+		self.xlData["namedCells"]  = {}
+		self.xlData["worksheets"]  = {}
+
+	def setCellData(self, worksheet, col, row, field, value):
+		sCol = self.col2Name(col)
+		sRow = str(row)
+		if not worksheet in self.xlData["worksheets"]:
+			self.xlData["worksheets"][worksheet] = {}
+		if not sCol in self.xlData["worksheets"][worksheet]:
+			self.xlData["worksheets"][worksheet][sCol] = {}
+		if not sRow in self.xlData["worksheets"][worksheet][sCol]:
+			self.xlData["worksheets"][worksheet][sCol][sRow] = {}
+		if not field in self.xlData["worksheets"][worksheet][sCol][sRow]:
+			self.xlData["worksheets"][worksheet][sCol][sRow][field] = value
+
+	def getCell(self, worksheet, col, row, type):
+		if not isinstance(col, str): col = col2Name(col)
+		if not isinstance(row, str): row = str(row)
+		return self.xlData["worksheets"][worksheet][col][str(row)][type]
+
+	def getNamedCell(self, workbook, name):
+		if name in self.xlData["namedCells"]:
+			cellRange = self.xlData["namedCells"][name]
+			if len(cellRange) == 1:
+				print("named cell points to:", cellRange[0][0], cellRange[0][1], cellRange[0][2])
+				return self.getCell(cellRange[0][0], cellRange[0][1], cellRange[0][2], 'formula')
+
+	def setNamedCell(self, worksheet, cellName, col, row):
+		if not cellName in self.xlData["namedCells"]:
+			self.addNamedCell(cellName)
+		self.xlData["namedCells"][cellName].append((worksheet, self.col2Name(col), str(row)))
+
+	def addNamedRange(self, rangeName, rangeRefersTo):
+		self.xlData["namedRanges"].append({'name':rangeName, 'refersto':rangeRefersTo})
+
+	def addNamedCell(self, cellName):
+		self.xlData["namedCells"][cellName] = []
+
+	def col2Name(self, columnValue):
+		'''Converts an integer column value to an Excel Alpha based name.'''
+		columnValue -= 1  # 26 should yield Z, which is A + 25
+		x = math.floor(columnValue / 26) - 1
+		y = columnValue % 26
+		BigA = ord('A')
+		col = ""
+		if x > 0:
+			col = chr(BigA + x)
+		return col + chr(BigA + y)
+
+	def getData(self):
+		return self.xlData
+
+	def dump(self):
+		print("WORKSHEETS\n", self.xlData["worksheets"])
+		print("NAMED CELLS\n", self.xlData["namedCells"])
+		print("NAMED RANGES\m", self.xlData["namedRanges"])
+
+
+
 class ExcelHandler(xml.sax.ContentHandler):
 
 	def __init__(self):
@@ -11,10 +75,7 @@ class ExcelHandler(xml.sax.ContentHandler):
 		self.ok = False
 		self.state = []
 
-		self.xlData = {}
-		self.xlData["namedRanges"] = []
-		self.xlData["namedCells"]  = {}
-		self.xlData["worksheets"]  = {}
+		self.wb = ExcelWB()
 
 		self.row = 0
 		self.col = 0
@@ -27,8 +88,8 @@ class ExcelHandler(xml.sax.ContentHandler):
 				self.worksheet = attrs['ss:Name']
 				print("Worksheet: " + self.worksheet)
 			elif name == 'NamedRange':
-				self.xlData["namedRanges"].append({'name':attrs['ss:Name'], 'refersto':attrs['ss:RefersTo']})
-				# print("Named Range: " + str(self.xlData["namedRanges"][len(self.xlData["namedRanges"])-1]))
+				self.wb.addNamedRange(attrs['ss:Name'], attrs['ss:RefersTo'])
+				# self.xlData["namedRanges"].append({'name':attrs['ss:Name'], 'refersto':attrs['ss:RefersTo']})
 
 			# a table marks the start of the worksheet's data  (rows and cells)
 			elif name == 'Table':
@@ -49,7 +110,7 @@ class ExcelHandler(xml.sax.ContentHandler):
 				else:
 					self.col += 1
 				if 'ss:Formula' in attrs:
-					self.setCellData(self.worksheet, self.col, self.row, 'formula', attrs['ss:Formula'])
+					self.wb.setCellData(self.worksheet, self.col, self.row, 'formula', attrs['ss:Formula'])
 
 			# finally if we have a data element, then look at it
 			elif name == 'Data' and 'Cell' in self.state:
@@ -59,9 +120,8 @@ class ExcelHandler(xml.sax.ContentHandler):
 			# save any named cell references
 			elif name == 'NamedCell' and self.state[-2] == 'Cell':
 				if 'ss:Name' in attrs:
-					if not attrs['ss:Name'] in self.xlData["namedCells"]:
-						self.xlData["namedCells"][attrs['ss:Name']] = []
-					self.xlData["namedCells"][attrs['ss:Name']].append((self.col2Name(self.col), str(self.row)))
+					self.wb.setNamedCell(self.worksheet, attrs['ss:Name'], self.col, self.row)
+					# self.xlData["namedCells"][attrs['ss:Name']].append((self.col2Name(self.col), str(self.row)))
 				else:
 					print("ERROR: A named cell element found without an ss:Name attribute...what to do?")
 					sys.exit(100)
@@ -80,38 +140,14 @@ class ExcelHandler(xml.sax.ContentHandler):
 
 	def characters(self, content):
 		if 'Data' == self.state[-1]:
-			self.setCellData(self.worksheet, self.col, self.row, 'content', content)
-
-	def col2Name(self, columnValue):
-		columnValue -= 1  # 26 should yield Z, which is A + 25
-		x = math.floor(columnValue / 26) - 1
-		y = columnValue % 26
-		BigA = ord('A')
-		col = ""
-		if x > 0:
-			col = chr(BigA + x)
-		return col + chr(BigA + y)
-
-	def setCellData(self, worksheet, col, row, field, value):
-		sCol = self.col2Name(col)
-		sRow = str(row)
-		if not worksheet in self.xlData["worksheets"]:
-			self.xlData["worksheets"][worksheet] = {}
-		if not sCol in self.xlData["worksheets"][worksheet]:
-			self.xlData["worksheets"][worksheet][sCol] = {}
-		if not sRow in self.xlData["worksheets"][worksheet][sCol]:
-			self.xlData["worksheets"][worksheet][sCol][sRow] = {}
-		if not field in self.xlData["worksheets"][worksheet][sCol][sRow]:
-			self.xlData["worksheets"][worksheet][sCol][sRow][field] = value
+			self.wb.setCellData(self.worksheet, self.col, self.row, 'content', content)
 
 	def terminate(self):
-		print(self.xlData["worksheets"])
-		print(self.xlData["namedCells"])
-		print(self.xlData["namedRanges"])
+		self.wb.dump()
 		sys.exit()
 
-	def getWorksheets(self):
-		return self.xlData
+	def getWorkbook(self):
+		return self.wb
 
 
 def main(sourceFileName):
@@ -119,7 +155,7 @@ def main(sourceFileName):
 	try:
 		xlpickle = open("xlstruct.pkl", "r+b")
 		U = pickle.Unpickler(xlpickle)
-		xlData = U.load()
+		xlWB = U.load()
 
 	except:
 		xlpickle = open("xlstruct.pkl", "w+b")
@@ -127,14 +163,14 @@ def main(sourceFileName):
 		handler = ExcelHandler()
 		xml.sax.parse(source, handler)
 
-		xlData = handler.getWorksheets()
+		xlWB = handler.getWorkbook()
 		P = pickle.Pickler(xlpickle)
-		P.dump(xlData)
+		P.dump(xlWB)
 
-	example_string = xlData["worksheets"]['PegTop']['ES']['252']["formula"]
-
-	# Give the lexer some input
-	# example_string = "=IF(R[-277]C>R[-305]C-2*R[-303]C,'-',0.58*R[-319]C*PI()*R[-277]C*R[-303]C*R[-3]C/R[-404]C/1000)"
+	example_string = xlWB.getCell('PegTop', 'ES', '252', 'formula')
+	example_string = xlWB.getNamedCell(None, 'YResult')
+	example_string = "=IF(R[-277]C>R[-305]C-2*R[-303]C,'-',0.58*R[-319]C*PI()*R[-277]C*R[-303]C*R[-3]C/R[-404]C/1000)"
+	
 	print(example_string)
 	excel_lang.lexer.input(example_string)
 
@@ -145,6 +181,7 @@ def main(sourceFileName):
 	    print(tok)
 
 	t = excel_lang.yacc.parse(example_string)
+	print(t)
 
 if __name__ == '__main__':
 	main('design_check.xml')
