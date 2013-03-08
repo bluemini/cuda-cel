@@ -248,14 +248,14 @@ def p_term_rowrange(p):
 # expression
 def p_expression_sub(p):
     'expression : LPAREN terms RPAREN'
-    p[0] = ['BINOP', p[2] ]
+    p[0] = ['SUBEXP', p[2] ]
 
 # def p_expression(p):
 #     'expression : LPAREN expression RPAREN'
 #     p[0] = ['BINOP', p[2], [p[1]] + p[3]]
 
 def p_expression_binop(p):
-    'expression : term binop terms'
+    'expression : term binop term'
     p[0] = ['BINOP', p[2], [p[1]] + p[3]]
 
 def p_binop(p):
