@@ -115,7 +115,7 @@ def t_INTEGER(t):
     return t
 
 def t_STRING(t):
-    r'"([^\"]|\\[nt\"])*"'
+    r'("([^\"]|\\[nt\"])*"|\'([^\']|\\[nt\'])*\')'
     t.value = t.value[1:-1]
     return t
 
@@ -173,7 +173,7 @@ def p_array_function(p):
 # functions..
 def p_functions(p):
     'functions : function functions'
-    p[0] = [p[1]] + p[2]
+    p[0] = p[1] + p[2]
 
 def p_functions_empty(p):
     'functions : '
@@ -181,7 +181,7 @@ def p_functions_empty(p):
 
 def p_function(p):
     '''function : FN LPAREN terms RPAREN'''
-    p[0] = ('FUNC', p[1], p[3] )     # invoke FUNCtion called p[1] with arguments p[3]
+    p[0] = ['FUNC', p[1], p[3] ]     # invoke FUNCtion called p[1] with arguments p[3]
 
 # terms..
 def p_terms(p):
@@ -231,19 +231,19 @@ def p_term_expression(p):
 
 def p_term_cell(p):
     'term : CELL'
-    p[0] = p[1]
+    p[0] = ['CELL', p[1]]
 
 def p_term_cellrange(p):
     'term : CELLRANGE'
-    p[0] = p[1]
+    p[0] = ['CELLRANGE', p[1]]
 
 def p_term_colrange(p):
     'term : COLRANGE'
-    p[0] = p[1]
+    p[0] = ['COLRANGE', p[1]]
 
 def p_term_rowrange(p):
     'term : ROWRANGE'
-    p[0] = p[1]
+    p[0] = ['ROWRANGE', p[1]]
 
 # expression
 def p_expression_sub(p):
@@ -256,7 +256,7 @@ def p_expression_sub(p):
 
 def p_expression_binop(p):
     'expression : term binop term'
-    p[0] = ['BINOP', p[2], [p[1]] + p[3]]
+    p[0] = ['BINOP', p[2], [p[1],  p[3]]]
 
 def p_binop(p):
     '''binop : ADD
@@ -324,6 +324,7 @@ if __name__ == '__main__':
                     '*IF(OR(AND(R[39]C[11]>=55,R[40]C[11]>=20),AND(R[40]C[11]>=20,R11C3="YES")), ' +
                     'R[45]C[11],R[43]C[11])),0))',
               ]
+              
     for t in inputs:
         print(t)
         dump = False
