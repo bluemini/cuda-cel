@@ -34,7 +34,12 @@ class ExcelWB():
 			cellRange = self.xlData["namedCells"][name]
 			if len(cellRange) == 1:
 				print("named cell points to:", cellRange[0][0], cellRange[0][1], cellRange[0][2])
-				return self.getCell(cellRange[0][0], cellRange[0][1], cellRange[0][2], 'formula')
+				cell = ExcelCell(cellRange[0][0], 
+					cellRange[0][1],
+					self.getCell(cellRange[0][0], cellRange[0][1], cellRange[0][2], 'content'),
+					self.getCell(cellRange[0][0], cellRange[0][1], cellRange[0][2], 'formula')
+				)
+				return cell
 
 	def setNamedCell(self, worksheet, cellName, col, row):
 		if not cellName in self.xlData["namedCells"]:
@@ -64,7 +69,33 @@ class ExcelWB():
 	def dump(self):
 		print("WORKSHEETS\n", self.xlData["worksheets"])
 		print("NAMED CELLS\n", self.xlData["namedCells"])
-		print("NAMED RANGES\m", self.xlData["namedRanges"])
+		print("NAMED RANGES\n", self.xlData["namedRanges"])
+
+
+class ExcelCell():
+
+	def __init__(self, col, row, data, formula=None):
+		self.col = col
+		self.row = row
+		self.data = data[0]
+		self.datatype = data[1]
+		self.formula = formula
+
+	def getAddress(self):
+		return self.col + self.row
+
+	def getFormula(self):
+		return self.formula
+
+	def getData(self):
+		return [self.data, self.datatype]
+
+	def getDataType(self):
+		return self.datatype
+
+	def calOffset(self, relcell):
+		print(relcell)
+		return
 
 
 
@@ -150,6 +181,33 @@ class ExcelHandler(xml.sax.ContentHandler):
 		return self.wb
 
 
+def fetchCell(cell):
+	example_string = cell.getFormula()
+	print(example_string)
+
+	if example_string:
+		# Tokenize
+		# excel_lang.lexer.input(example_string)
+		# while True:
+		#     tok = excel_lang.lexer.token()
+		#     if not tok: break      # No more input
+		#     print(tok)
+
+		t = excel_lang.yacc.parse(example_string)
+		expand(cell)
+
+
+def expand(cell):
+
+		if t[0] == 'FORMULA':
+			print(t)
+			args = t[2]
+			print(t[1], args)
+
+	else:
+		print("No formula returned from that cell...")
+
+
 def main(sourceFileName):
 
 	try:
@@ -167,21 +225,12 @@ def main(sourceFileName):
 		P = pickle.Pickler(xlpickle)
 		P.dump(xlWB)
 
-	example_string = xlWB.getCell('PegTop', 'ES', '252', 'formula')
-	example_string = xlWB.getNamedCell(None, 'YResult')
-	example_string = "=IF(R[-277]C>R[-305]C-2*R[-303]C,'-',0.58*R[-319]C*PI()*R[-277]C*R[-303]C*R[-3]C/R[-404]C/1000)"
+	# example_string = xlWB.getCell('PegTop', 'ES', '252', 'formula')
+	cell = xlWB.getNamedCell(None, 'YResult')
+	# example_string = "=IF(R[-277]C>R[-305]C-2*R[-303]C,'-',0.58*R[-319]C*PI()*R[-277]C*R[-303]C*R[-3]C/R[-404]C/1000)"
 	
-	print(example_string)
-	excel_lang.lexer.input(example_string)
+	fetchCell(cell)
 
-	# Tokenize
-	while True:
-	    tok = excel_lang.lexer.token()
-	    if not tok: break      # No more input
-	    print(tok)
-
-	t = excel_lang.yacc.parse(example_string)
-	print(t)
 
 if __name__ == '__main__':
 	main('design_check.xml')

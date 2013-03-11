@@ -39,7 +39,9 @@ tokens = (
     'LBRACKET',
     'RBRACKET',
     'LBRACE',
-    'RBRACE'
+    'RBRACE',
+
+    'RANGESEP'
 )
 
 # a string needs to match "this is something\nand another line\nand a quote \"welcome\""
@@ -64,6 +66,7 @@ t_LBRACKET  = r'\['
 t_RBRACKET  = r'\]'
 t_LBRACE    = r'\{'
 t_RBRACE    = r'\}'
+t_RANGESEP  = r':'
 
 def t_WBREF(t):
     r'\[[^\]]+\]'
@@ -71,11 +74,12 @@ def t_WBREF(t):
     return t
 
 def t_RELCELL(t):
-    r'R(\[-?[0-9]+\])?C(\[-?[0-9]+\])?'
+    r'R(\[(?P<rowoffset>-?[0-9]+)\])?C(\[(?P<coloffset>-?[0-9]+)\])?'
+    t.value = [t.lexer.lexmatch.group('rowoffset'), t.lexer.lexmatch.group('coloffset')]
     return t
 
 def t_FN(t):
-    r'AVG|IF|PI|SUM|VLOOKUP'
+    r'AVG|IF|MAX|MIN|PI|SUM|VLOOKUP'
     return t
 
 def t_NUMBER_HEX(t):
@@ -145,7 +149,7 @@ names = { }
 # formulas are the base cases for an = cell
 def p_formula_fn(p):
     'formula : EQ functions'
-    p[0] = ('FORMULA', [p[1]] + p[2])
+    p[0] = ('FORMULA', [p[2]])
 
 def p_formula_exp(p):
     'formula : EQ expression'
@@ -236,6 +240,10 @@ def p_term_cell(p):
 def p_term_cellrange(p):
     'term : CELLRANGE'
     p[0] = ['CELLRANGE', p[1]]
+
+def p_term_cellrange_rel(p):
+    'term : RELCELL RANGESEP RELCELL'
+    p[0] = ['RELCELLRANGE', p[1], p[3]]
 
 def p_term_colrange(p):
     'term : COLRANGE'
