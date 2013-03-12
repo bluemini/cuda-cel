@@ -75,7 +75,7 @@ def t_WBREF(t):
 
 def t_RELCELL(t):
     r'R(\[(?P<rowoffset>-?[0-9]+)\])?C(\[(?P<coloffset>-?[0-9]+)\])?'
-    t.value = [t.lexer.lexmatch.group('rowoffset'), t.lexer.lexmatch.group('coloffset')]
+    t.value = (t.lexer.lexmatch.group('rowoffset'), t.lexer.lexmatch.group('coloffset'))
     return t
 
 def t_FN(t):
@@ -149,19 +149,19 @@ names = { }
 # formulas are the base cases for an = cell
 def p_formula_fn(p):
     'formula : EQ functions'
-    p[0] = ('FORMULA', [p[2]])
+    p[0] = ('FORMULA', p[2])
 
 def p_formula_exp(p):
     'formula : EQ expression'
-    p[0] = ('FORMULA', [p[2]])
+    p[0] = ('FORMULA', p[2])
 
 def p_formula_number(p):
     'formula : EQ NUMBER'
-    p[0] = ('FORMULA', [p[2]])
+    p[0] = ('FORMULA', p[2])
 
 def p_formula_cell(p):
     'formula : EQ CELL'
-    p[0] = ('FORMULA', [p[2]])
+    p[0] = ('FORMULA', p[2])
 
 def p_formula_array(p):
     'formula : EQ array'
@@ -177,7 +177,7 @@ def p_array_function(p):
 # functions..
 def p_functions(p):
     'functions : function functions'
-    p[0] = p[1] + p[2]
+    p[0] = [p[1]] + p[2]
 
 def p_functions_empty(p):
     'functions : '
@@ -185,7 +185,7 @@ def p_functions_empty(p):
 
 def p_function(p):
     '''function : FN LPAREN terms RPAREN'''
-    p[0] = ['FUNC', p[1], p[3] ]     # invoke FUNCtion called p[1] with arguments p[3]
+    p[0] = ('FUNC', p[1], p[3])     # invoke FUNCtion called p[1] with arguments p[3]
 
 # terms..
 def p_terms(p):
@@ -207,51 +207,51 @@ def p_term_function(p):
 
 def p_term_string(p):
     'term : STRING'
-    p[0] = ['STRING', p[1]]
+    p[0] = ('STRING', p[1])
 
 def p_term_relcell(p):
     'term : RELCELL'
-    p[0] = ['RELCELL', p[1]]
+    p[0] = ('RELCELL', p[1])
 
 def p_term_name(p):
     'term : NAME'
-    p[0] = ['NAME', p[1]]
+    p[0] = ('NAME', p[1])
 
-def p_term_fn(p):
-    'term : FN'
-    p[0] = ['TERM', p[1]]
+# def p_term_fn(p):
+#     'term : FN'
+#     p[0] = ['TERM', p[1]]
 
 def p_term_numberhex(p):
     'term : NUMBER_HEX'
-    p[0] = ['NUMBER', p[1]]
+    p[0] = ('NUMBER', p[1])
 
 def p_term_number(p):
     'term : NUMBER'
-    p[0] = ['NUMBER', p[1]]
+    p[0] = ('NUMBER', p[1])
 
 def p_term_expression(p):
     'term : expression'
-    p[0] = p[1]
+    p[0] = (p[1])
 
 def p_term_cell(p):
     'term : CELL'
-    p[0] = ['CELL', p[1]]
+    p[0] = ('CELL', p[1])
 
 def p_term_cellrange(p):
     'term : CELLRANGE'
-    p[0] = ['CELLRANGE', p[1]]
+    p[0] = ('CELLRANGE', p[1])
 
 def p_term_cellrange_rel(p):
     'term : RELCELL RANGESEP RELCELL'
-    p[0] = ['RELCELLRANGE', p[1], p[3]]
+    p[0] = ('RELCELLRANGE', p[1], p[3])
 
 def p_term_colrange(p):
     'term : COLRANGE'
-    p[0] = ['COLRANGE', p[1]]
+    p[0] = ('COLRANGE', p[1])
 
 def p_term_rowrange(p):
     'term : ROWRANGE'
-    p[0] = ['ROWRANGE', p[1]]
+    p[0] = ('ROWRANGE', p[1])
 
 # expression
 def p_expression_sub(p):
