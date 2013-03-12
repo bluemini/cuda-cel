@@ -93,9 +93,12 @@ class ExcelCell():
 	def getDataType(self):
 		return self.datatype
 
-	def calOffset(self, relcell):
-		print(relcell)
-		return
+	def calcOffset(self, relcell):
+		col = self.col
+		row = self.row
+		if relcell[1]: col + relcell[1]
+		if relcell[0]: row + relcell[0]
+		return col, row
 
 
 
@@ -194,21 +197,44 @@ def fetchCell(cell):
 		#     print(tok)
 
 		t = excel_lang.yacc.parse(example_string)
-		expand(cell)
-
-
-def expand(cell):
-
 		if t[0] == 'FORMULA':
-			print(t)
-			args = t[2]
-			print(t[1], args)
+			cell.parsed = t[1]
+			expand(t[1], cell)
+		else:
+			raise Exception("a formula must start with 'FORMULA', either the parser failed of it's an invalid cell")
 
-	else:
-		print("No formula returned from that cell...")
+
+def expand(tree, cell):
+	'''start to drill down into the formula.'''
+	print(tree)
+	for t in tree:
+		if t[0] == 'FUNC':
+			if t[1] == 'MAX':
+				callStack.append(t[1])
+				expand(t[2], cell)
+			else:
+				print("ERROR: "+aspect[1]+" function not written yet!")
+				sys.exit(500)
+		else:
+			if t[0] == 'RELCELLRANGE':
+				# fetchCellRange(t[1])
+				# fetchCellRange(t[2])
+				print("fetch data from range", cell.calcOffset(t[1]), cell.calcOffset(t[2]))
+			elif t[0] == 'BINOP':
+				args = expand(t[2], cell)
+				print("binop", t[1], args)
+			elif t[0] == 'RELCELL':
+				# print("fetch data from cell", cell.calcOffset(t[1]))
+				xlWB.cell.calcOffset(t[1])
+				fetchCell()
+			else:
+				print("ERROR: type", t, "not supported yet!")
+				sys.exit(500)
 
 
 def main(sourceFileName):
+
+	global callStack, xlWB
 
 	try:
 		xlpickle = open("xlstruct.pkl", "r+b")
@@ -229,6 +255,7 @@ def main(sourceFileName):
 	cell = xlWB.getNamedCell(None, 'YResult')
 	# example_string = "=IF(R[-277]C>R[-305]C-2*R[-303]C,'-',0.58*R[-319]C*PI()*R[-277]C*R[-303]C*R[-3]C/R[-404]C/1000)"
 	
+	callStack = []
 	fetchCell(cell)
 
 
