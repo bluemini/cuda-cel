@@ -4,6 +4,13 @@ import math
 import excel_lang
 import pickle
 
+
+'''
+A cell is referenced as an instance of an ExcelCell
+An address, to either fetch or as a property of a cell is a 3-tuple:
+	(sheet, row, column)
+'''
+
 class ExcelWB():
 
 	def __init__(self):
@@ -12,34 +19,40 @@ class ExcelWB():
 		self.xlData["namedCells"]  = {}
 		self.xlData["worksheets"]  = {}
 
-	def setCellData(self, worksheet, col, row, field, value):
-		sCol = self.col2Name(col)
-		sRow = str(row)
+	def setCellData(self, cell, field, value):
+		'''each cell location in the nested dict of objects. The 'data' for the
+		cell is a dict, with each key representing an associated piece of data, its
+		name, type and other meta-data.'''
+		cellAddress = cell.getAddress()
+		col = cellAddress[2]
+		row = str(cellAddress[1])
+		worksheet = cellAddress[0]
 		if not worksheet in self.xlData["worksheets"]:
 			self.xlData["worksheets"][worksheet] = {}
-		if not sCol in self.xlData["worksheets"][worksheet]:
-			self.xlData["worksheets"][worksheet][sCol] = {}
-		if not sRow in self.xlData["worksheets"][worksheet][sCol]:
-			self.xlData["worksheets"][worksheet][sCol][sRow] = {}
-		if not field in self.xlData["worksheets"][worksheet][sCol][sRow]:
-			self.xlData["worksheets"][worksheet][sCol][sRow][field] = value
+		if not col in self.xlData["worksheets"][worksheet]:
+			self.xlData["worksheets"][worksheet][col] = {}
+		if not row in self.xlData["worksheets"][worksheet][col]:
+			self.xlData["worksheets"][worksheet][col][row] = {}
+		if not field in self.xlData["worksheets"][worksheet][col][row]:
+			self.xlData["worksheets"][worksheet][col][row][field] = value
 
-	def getCell(self, worksheet, col, row, type):
-		if not isinstance(col, str): col = col2Name(col)
-		if not isinstance(row, str): row = str(row)
-		return self.xlData["worksheets"][worksheet][col][str(row)][type]
+	def getCell(self, address): #, worksheet, col, row, type
+		col = address[2]
+		row = address[1]
+		worksheet = address[0]
+		cell = ExcelCell(worksheet, 
+			col, 
+			row, 
+			self.xlData["worksheets"][worksheet][col][row]
+		)
+		return cell
 
 	def getNamedCell(self, workbook, name):
 		if name in self.xlData["namedCells"]:
 			cellRange = self.xlData["namedCells"][name]
 			if len(cellRange) == 1:
 				print("named cell points to:", cellRange[0][0], cellRange[0][1], cellRange[0][2])
-				cell = ExcelCell(cellRange[0][0], 
-					cellRange[0][1],
-					self.getCell(cellRange[0][0], cellRange[0][1], cellRange[0][2], 'content'),
-					self.getCell(cellRange[0][0], cellRange[0][1], cellRange[0][2], 'formula')
-				)
-				return cell
+				return self.getCell( (cellRange[0][0], cellRange[0][2], cellRange[0][1]) )
 
 	def setNamedCell(self, worksheet, cellName, col, row):
 		if not cellName in self.xlData["namedCells"]:
@@ -52,17 +65,6 @@ class ExcelWB():
 	def addNamedCell(self, cellName):
 		self.xlData["namedCells"][cellName] = []
 
-	def col2Name(self, columnValue):
-		'''Converts an integer column value to an Excel Alpha based name.'''
-		columnValue -= 1  # 26 should yield Z, which is A + 25
-		x = math.floor(columnValue / 26) - 1
-		y = columnValue % 26
-		BigA = ord('A')
-		col = ""
-		if x > 0:
-			col = chr(BigA + x)
-		return col + chr(BigA + y)
-
 	def getData(self):
 		return self.xlData
 
@@ -74,18 +76,17 @@ class ExcelWB():
 
 class ExcelCell():
 
-	def __init__(self, col, row, data, formula=None):
+	def __init__(self, sheet, col, row, data):
+		self.sheet = sheet
 		self.col = col
 		self.row = row
-		self.data = data[0]
-		self.datatype = data[1]
-		self.formula = formula
+		self.data = data
 
 	def getAddress(self):
-		return self.col + self.row
+		return (self.sheet, self.row, self.col)
 
 	def getFormula(self):
-		return self.formula
+		return self.data['formula']
 
 	def getData(self):
 		return [self.data, self.datatype]
@@ -96,9 +97,20 @@ class ExcelCell():
 	def calcOffset(self, relcell):
 		col = self.col
 		row = self.row
-		if relcell[1]: col + relcell[1]
-		if relcell[0]: row + relcell[0]
-		return col, row
+		if relcell[1]: col += relcell[1]
+		if relcell[0]: row += relcell[0]
+		return self.sheet, row, col
+
+	def col2Name(self, columnValue):
+		'''Converts an integer column value to an Excel Alpha based name.'''
+		columnValue -= 1  # 26 should yield Z, which is A + 25
+		x = math.floor(columnValue / 26) - 1
+		y = columnValue % 26
+		BigA = ord('A')
+		col = ""
+		if x > 0:
+			col = chr(BigA + x)
+		return col + chr(BigA + y)
 
 
 
@@ -206,6 +218,7 @@ def fetchCell(cell):
 
 def expand(tree, cell):
 	'''start to drill down into the formula.'''
+	print('Expanding: ', cell.getAddress())
 	print(tree)
 	for t in tree:
 		if t[0] == 'FUNC':
@@ -225,8 +238,7 @@ def expand(tree, cell):
 				print("binop", t[1], args)
 			elif t[0] == 'RELCELL':
 				# print("fetch data from cell", cell.calcOffset(t[1]))
-				xlWB.cell.calcOffset(t[1])
-				fetchCell()
+				fetchCell(xlWB.getCell(cell.calcOffset(t[1])))
 			else:
 				print("ERROR: type", t, "not supported yet!")
 				sys.exit(500)
