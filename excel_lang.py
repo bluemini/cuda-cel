@@ -31,6 +31,7 @@ tokens = (
     'SUB',
     'ADD',
     'GT','LT','GTE','LTE',
+    'STRCONCAT',
     
     'TYPEDEF',
     'STRING',
@@ -58,6 +59,7 @@ t_GT        = r'>'
 t_LT        = r'<'
 t_GTE       = r'>='
 t_LTE       = r'<='
+t_STRCONCAT = r'&'
 
 t_DOLLAR    = r'\$(list|type)?'
 t_LPAREN    = r'\('
@@ -75,11 +77,15 @@ def t_WBREF(t):
 
 def t_RELCELL(t):
     r'R(\[(?P<rowoffset>-?[0-9]+)\])?C(\[(?P<coloffset>-?[0-9]+)\])?'
-    t.value = (t.lexer.lexmatch.group('rowoffset'), t.lexer.lexmatch.group('coloffset'))
+    rTerm = t.lexer.lexmatch.group('rowoffset')
+    cTerm = t.lexer.lexmatch.group('coloffset')
+    if not cTerm: cTerm = 0     # we need to ensure that we convert None to 0 for offsets
+    if not rTerm: rTerm = 0
+    t.value = (int(rTerm), int(cTerm))
     return t
 
 def t_FN(t):
-    r'AVG|IF|MAX|MIN|PI|SUM|VLOOKUP'
+    r'AVG|IFERROR|IF|MAX|MIN|PI|ROUND|SUM|VLOOKUP'
     return t
 
 def t_NUMBER_HEX(t):
@@ -209,9 +215,13 @@ def p_term_string(p):
     'term : STRING'
     p[0] = ('STRING', p[1])
 
-def p_term_relcell(p):
-    'term : RELCELL'
-    p[0] = ('RELCELL', p[1])
+# def p_term_relcell(p):
+#     'term : RELCELL'
+#     # if not p[1][0]: p[1] = (0, p[1][1]) # we need to ensure that we convert None to 0 for offsets
+#     # if not p[1][1]: p[1] = (p[1][0], 0)
+#     # print(p[1])
+#     # sys.exit()
+#     p[0] = ('RELCELL', p[1])
 
 def p_term_name(p):
     'term : NAME'
@@ -231,7 +241,7 @@ def p_term_number(p):
 
 def p_term_expression(p):
     'term : expression'
-    p[0] = (p[1])
+    p[0] = ('EXPRESSION', p[1])
 
 def p_term_cell(p):
     'term : CELL'
@@ -275,7 +285,8 @@ def p_binop(p):
              | GT
              | LT
              | GTE
-             | LTE'''
+             | LTE
+             | STRCONCAT'''
     p[0] = p[1]
 
 
@@ -288,54 +299,59 @@ if __name__ == '__main__':
 
     # Test inputs
     inputs = [
-                # Simple test formulae
-                '=1+3+5',
-                '=3 * 4 + 5',
-                '=50',
-                '=1+1',
-                '=$A1',
-                '=$B$2',
-                '=SUM(B5:B15)',
-                '=SUM(B5:B15,D5:D15)',
-                '=SUM(B5:B15 A7:D7)',
-                '=SUM(sheet1!$A$1:$B$2)',
-                        #'=[data.xls]sheet1!$A$1',
-                '=SUM((A:A 1:1))',
-                '=SUM((A:A,1:1))',
-                '=SUM((A:A A1:B1))',
-                '=SUM(D9:D11,E9:E11,F9:F11)',
-                '=SUM((D9:D11,(E9:E11,F9:F11)))',
+                # Field test formulae
+                '=MAX(RC[-2]:R[4]C[-2])'
+                # '=IF(RC[3]>0,"Y","N")'
+                # '=IFERROR(""&IF(R[39]C>=30,"",ROUND(R[39]C,3)&" Deg Brace Angle < 30 deg")&"","Error")'
 
-                # build the complex IF statement incrementally
-                '=IF(P5=8.0,"G")',
-                '=IF(P5=7.0,"F",IF(P5=8.0,"G"))',
-                '=IF(P5=6.0,"E",IF(P5=7.0,"F",IF(P5=8.0,"G")))',
-                '=IF(P5=1.0,"NA",IF(P5=2.0,"A",IF(P5=3.0,"B",IF(P5=4.0,"C",IF(P5=5.0,"D",IF(P5=6.0,"E",IF(P5=7.0,"F",IF(P5=8.0,"G"))))))))',
-                '=IF(P5=1.0,"NA",IF(P5=2.0,"A",IF(P5=3.0,"B",IF(P5=4.0,"C",IF(P5=5.0,"D",IF(P5=6.0,"E",IF(P5=7.0,"F",IF(P5=8.0,"G"))))))))',
+                # # Simple test formulae
+                # '=1+3+5',
+                # '=3 * 4 + 5',
+                # '=50',
+                # '=1+1',
+                # '=$A1',
+                # '=$B$2',
+                # '=SUM(B5:B15)',
+                # '=SUM(B5:B15,D5:D15)',
+                # '=SUM(B5:B15 A7:D7)',
+                # '=SUM(sheet1!$A$1:$B$2)',
+                #         #'=[data.xls]sheet1!$A$1',
+                # '=SUM((A:A 1:1))',
+                # '=SUM((A:A,1:1))',
+                # '=SUM((A:A A1:B1))',
+                # '=SUM(D9:D11,E9:E11,F9:F11)',
+                # '=SUM((D9:D11,(E9:E11,F9:F11)))',
 
-                '={SUM(B2:D2*B3:D3)}',
-                '=SUM(123 + SUM(456) + (45<6))+456+789',
-                '=AVG(((((123 + 4 + AVG(A1:A2))))))',
+                # # build the complex IF statement incrementally
+                # '=IF(P5=8.0,"G")',
+                # '=IF(P5=7.0,"F",IF(P5=8.0,"G"))',
+                # '=IF(P5=6.0,"E",IF(P5=7.0,"F",IF(P5=8.0,"G")))',
+                # '=IF(P5=1.0,"NA",IF(P5=2.0,"A",IF(P5=3.0,"B",IF(P5=4.0,"C",IF(P5=5.0,"D",IF(P5=6.0,"E",IF(P5=7.0,"F",IF(P5=8.0,"G"))))))))',
+                # '=IF(P5=1.0,"NA",IF(P5=2.0,"A",IF(P5=3.0,"B",IF(P5=4.0,"C",IF(P5=5.0,"D",IF(P5=6.0,"E",IF(P5=7.0,"F",IF(P5=8.0,"G"))))))))',
 
-                # some from a real example
-                '=VLOOKUP(VLOOKUP(R[-95]C,elements,2,FALSE),sectionList,2,FALSE)',
-                '=IF(R[-277]C>R[-305]C-2*R[-303]C,\'-\',0.58*R[-319]C*PI()*R[-277]C*R[-303]C*R[-3]C/R[-404]C/1000)',
-                '=IF(R[-277]C>R[-305]C,\'-\',FALSE)',
-                '=IF(R[-277]C,\'-\',FALSE)',
+                # '={SUM(B2:D2*B3:D3)}',
+                # '=SUM(123 + SUM(456) + (45<6))+456+789',
+                # '=AVG(((((123 + 4 + AVG(A1:A2))))))',
 
-                # E. W. Bachtal's test formulae
-                '=IF("a"={"a","b";"c",#N/A;-1,TRUE}, "yes", "no") &   "  more ""test"" text"',
-                '=+ AName- (-+-+-2^6) = {"A","B"} + @SUM(R1C1) + (@ERROR.TYPE(#VALUE!) = 2)',
-                '=IF(R13C3>DATE(2002,1,6),0,IF(ISERROR(R[41]C[2]),0,IF(R13C3>=R[41]C[2],0, IF(AND(R[23]C[11]>=55,R[24]C[11]>=20),R53C3,0))))',
-                '=IF(R[39]C[11]>65,R[25]C[42],ROUND((R[11]C[11]*IF(OR(AND(R[39]C[11]>=55, ' + 
-                    'R[40]C[11]>=20),AND(R[40]C[11]>=20,R11C3="YES")),R[44]C[11],R[43]C[11]))+(R[14]C[11] ' +
-                    '*IF(OR(AND(R[39]C[11]>=55,R[40]C[11]>=20),AND(R[40]C[11]>=20,R11C3="YES")), ' +
-                    'R[45]C[11],R[43]C[11])),0))',
+                # # some from a real example
+                # '=VLOOKUP(VLOOKUP(R[-95]C,elements,2,FALSE),sectionList,2,FALSE)',
+                # '=IF(R[-277]C>R[-305]C-2*R[-303]C,\'-\',0.58*R[-319]C*PI()*R[-277]C*R[-303]C*R[-3]C/R[-404]C/1000)',
+                # '=IF(R[-277]C>R[-305]C,\'-\',FALSE)',
+                # '=IF(R[-277]C,\'-\',FALSE)',
+
+                # # E. W. Bachtal's test formulae
+                # '=IF("a"={"a","b";"c",#N/A;-1,TRUE}, "yes", "no") &   "  more ""test"" text"',
+                # '=+ AName- (-+-+-2^6) = {"A","B"} + @SUM(R1C1) + (@ERROR.TYPE(#VALUE!) = 2)',
+                # '=IF(R13C3>DATE(2002,1,6),0,IF(ISERROR(R[41]C[2]),0,IF(R13C3>=R[41]C[2],0, IF(AND(R[23]C[11]>=55,R[24]C[11]>=20),R53C3,0))))',
+                # '=IF(R[39]C[11]>65,R[25]C[42],ROUND((R[11]C[11]*IF(OR(AND(R[39]C[11]>=55, ' + 
+                #     'R[40]C[11]>=20),AND(R[40]C[11]>=20,R11C3="YES")),R[44]C[11],R[43]C[11]))+(R[14]C[11] ' +
+                #     '*IF(OR(AND(R[39]C[11]>=55,R[40]C[11]>=20),AND(R[40]C[11]>=20,R11C3="YES")), ' +
+                #     'R[45]C[11],R[43]C[11])),0))',
               ]
               
     for t in inputs:
         print(t)
-        dump = False
+        dump = True
 
         try:
             tree = yacc.parse(t)

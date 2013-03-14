@@ -18,6 +18,13 @@ class ExcelWB():
 		self.xlData["namedRanges"] = []
 		self.xlData["namedCells"]  = {}
 		self.xlData["worksheets"]  = {}
+		self.xlData["fileName"] = ""
+
+	def setFileName(self, fileName):
+		self.xlData["fileName"] = fileName
+
+	def getFileName(self):
+		return self.xlData["fileName"]
 
 	def setCellData(self, cell, field, value):
 		'''each cell location in the nested dict of objects. The 'data' for the
@@ -40,11 +47,21 @@ class ExcelWB():
 		col = address[2]
 		row = address[1]
 		worksheet = address[0]
-		cell = ExcelCell(worksheet, 
-			col, 
-			row, 
-			self.xlData["worksheets"][worksheet][col][row]
-		)
+		try:
+			cell = ExcelCell(worksheet, 
+				col, 
+				row, 
+				self.xlData["worksheets"][worksheet][col][row]
+			)
+		except Exception as e:
+			if not worksheet in self.xlData["worksheets"]:
+				print("ERROR:", worksheet, "worksheet is not found")
+			elif not col in self.xlData["worksheets"][worksheet]:
+				print("ERROR: column", col, "not found in workbook")
+				print(self.xlData['worksheets'][worksheet])
+			elif not row in self.xlData["worksheets"][worksheet][col]:
+				print("ERROR: row", row, "not found in workbook")
+			raise e
 		return cell
 
 	def getNamedCell(self, workbook, name):
@@ -53,11 +70,14 @@ class ExcelWB():
 			if len(cellRange) == 1:
 				print("named cell points to:", cellRange[0][0], cellRange[0][1], cellRange[0][2])
 				return self.getCell( (cellRange[0][0], cellRange[0][2], cellRange[0][1]) )
+		else:
+			return None
 
-	def setNamedCell(self, worksheet, cellName, col, row):
+	def setNamedCell(self, cellName, cell):
 		if not cellName in self.xlData["namedCells"]:
 			self.addNamedCell(cellName)
-		self.xlData["namedCells"][cellName].append((worksheet, self.col2Name(col), str(row)))
+		addr = cell.getAddress()
+		self.xlData["namedCells"][cellName].append((addr[0], addr[2], str(addr[1])))
 
 	def addNamedRange(self, rangeName, rangeRefersTo):
 		self.xlData["namedRanges"].append({'name':rangeName, 'refersto':rangeRefersTo})
@@ -77,40 +97,61 @@ class ExcelWB():
 class ExcelCell():
 
 	def __init__(self, sheet, col, row, data):
+		self.BigA = ord('A')
 		self.sheet = sheet
-		self.col = col
-		self.row = row
+		self.col = int(self.name2col(col))
+		self.row = int(row)
 		self.data = data
 
 	def getAddress(self):
-		return (self.sheet, self.row, self.col)
+		return (self.sheet, str(self.row), str(self.col2Name(self.col) ) )
 
 	def getFormula(self):
-		return self.data['formula']
+		if 'formula' in self.data:
+			return self.data['formula']
 
 	def getData(self):
-		return [self.data, self.datatype]
+		return self.data
 
 	def getDataType(self):
 		return self.datatype
 
+	def getVar(self):
+		return self.sheet + "__" + self.col2Name(self.col) + "__" + str(self.row)
+
 	def calcOffset(self, relcell):
-		col = self.col
-		row = self.row
-		if relcell[1]: col += relcell[1]
-		if relcell[0]: row += relcell[0]
+		'''A relcell always supplies offsets in int format, therefore we must first
+		convert the Column to an int, before adding.'''
+		row = str(int(self.row) + int(relcell[0]))
+		col = self.col2Name(str(int(self.col) + int(relcell[1]) ) )
 		return self.sheet, row, col
 
 	def col2Name(self, columnValue):
 		'''Converts an integer column value to an Excel Alpha based name.'''
-		columnValue -= 1  # 26 should yield Z, which is A + 25
-		x = math.floor(columnValue / 26) - 1
-		y = columnValue % 26
-		BigA = ord('A')
-		col = ""
-		if x > 0:
-			col = chr(BigA + x)
-		return col + chr(BigA + y)
+		try:
+			columnValue = int(columnValue)  # 26 should yield Z, which is A + 25
+			x = math.floor(columnValue / 26) - 1
+			y = columnValue % 26
+			col = ""
+			if x > 0:
+				col = chr(self.BigA + x)
+			return col + chr(self.BigA + y)
+		except Exception as e:
+			# print("col2Name", columnValue, e)
+			pass
+		return columnValue
+
+	def name2col(self, columnValue):
+		'''Converts a str column value to an integer.'''
+		acc = 0
+		try:
+			for ch in columnValue:
+				acc = (acc * 26) + ord(ch) - self.BigA
+			return acc
+		except Exception as e:
+			# print("name2col", e)
+			pass
+		return columnValue
 
 
 
@@ -156,17 +197,17 @@ class ExcelHandler(xml.sax.ContentHandler):
 				else:
 					self.col += 1
 				if 'ss:Formula' in attrs:
-					self.wb.setCellData(self.worksheet, self.col, self.row, 'formula', attrs['ss:Formula'])
+					self.wb.setCellData(ExcelCell(self.worksheet, self.col-1, self.row, None), 'formula', attrs['ss:Formula'])
 
 			# finally if we have a data element, then look at it
 			elif name == 'Data' and 'Cell' in self.state:
-				# print("got data")
-				pass
+				if 'ss:Type' in attrs:
+					self.wb.setCellData(ExcelCell(self.worksheet, self.col-1, self.row, None), 'datatype', attrs['ss:Type'])
 
 			# save any named cell references
 			elif name == 'NamedCell' and self.state[-2] == 'Cell':
 				if 'ss:Name' in attrs:
-					self.wb.setNamedCell(self.worksheet, attrs['ss:Name'], self.col, self.row)
+					self.wb.setNamedCell(attrs['ss:Name'], ExcelCell(self.worksheet, self.col-1, self.row, None))
 					# self.xlData["namedCells"][attrs['ss:Name']].append((self.col2Name(self.col), str(self.row)))
 				else:
 					print("ERROR: A named cell element found without an ss:Name attribute...what to do?")
@@ -186,7 +227,8 @@ class ExcelHandler(xml.sax.ContentHandler):
 
 	def characters(self, content):
 		if 'Data' == self.state[-1]:
-			self.wb.setCellData(self.worksheet, self.col, self.row, 'content', content)
+			cell = ExcelCell(self.worksheet, self.col-1, self.row, None)
+			self.wb.setCellData(cell, 'content', content)
 
 	def terminate(self):
 		self.wb.dump()
@@ -198,8 +240,6 @@ class ExcelHandler(xml.sax.ContentHandler):
 
 def fetchCell(cell):
 	example_string = cell.getFormula()
-	print(example_string)
-
 	if example_string:
 		# Tokenize
 		# excel_lang.lexer.input(example_string)
@@ -211,47 +251,124 @@ def fetchCell(cell):
 		t = excel_lang.yacc.parse(example_string)
 		if t[0] == 'FORMULA':
 			cell.parsed = t[1]
-			expand(t[1], cell)
+			expanded = expand(t[1], cell)
+			return expanded
 		else:
 			raise Exception("a formula must start with 'FORMULA', either the parser failed of it's an invalid cell")
 
+	else:
+		data = cell.getData()
+		varName = cell.getVar()
+		if not varName in declaredVars:
+			print("CODE:", data['datatype'], cell.getVar(), '=', data['content'], ";")
+			declaredVars.append(varName)
+		return data
+
 
 def expand(tree, cell):
-	'''start to drill down into the formula.'''
-	print('Expanding: ', cell.getAddress())
-	print(tree)
+	'''start to drill down into the formula. This is one large part of the 
+	guts of the parser, taking elements and expanding their references and
+	then parsing and expanding them, until we reach cells that do not need
+	any further expansion...'''
+	print('Expanding: ', cell.getAddress(), tree)
 	for t in tree:
 		if t[0] == 'FUNC':
-			if t[1] == 'MAX':
+			if t[1] == 'IF':
 				callStack.append(t[1])
-				expand(t[2], cell)
+				if len(t[2]) != 3:
+					errorMssg = "IF function requires exactly 3 arguments, " + str(len(t[2])) + " given"
+					raise Exception(errorMssg)
+				return expand(t[2], cell)
+
+			if t[1] == 'IFERROR':
+				callStack.append(t[1])
+				if len(t[2]) != 2:
+					errorMssg = "IFERROR function requires exactly 2 arguments, " + str(len(t[2])) + " given"
+					raise Exception(errorMssg)
+				return expand(t[2], cell)
+
+			if t[1] == 'MAX':
+				varss = expand(t[2], cell) # varss will return a list of cells
+				celss = []
+				for ci in range(len(varss)):
+					celss.append( fetchCell(varss[ci]) )
+				for ci in range(len(varss)):
+					if ci == 0:
+						print("CODE: tempMax = ", varss[ci].getVar(), ";")
+					else:
+						print("CODE: if (", varss[ci].getVar(), " > tempMax ) { tempMax =", varss[ci].getVar(), "; }")
+				return 'tempMax'
+
 			else:
-				print("ERROR: "+aspect[1]+" function not written yet!")
+				print("ERROR: "+t[1]+" function not written yet!")
 				sys.exit(500)
 		else:
 			if t[0] == 'RELCELLRANGE':
-				# fetchCellRange(t[1])
-				# fetchCellRange(t[2])
 				print("fetch data from range", cell.calcOffset(t[1]), cell.calcOffset(t[2]))
+				rangeData = []
+				fromCellRowOff	= t[1][0]
+				fromCellColOff	= t[1][1]
+				toCellRowOff 	= t[2][0]
+				toCellColOff 	= t[2][1]
+				# print(str(fromCellRowOff), str(fromCellColOff), str(toCellRowOff), str(toCellColOff))
+				for r in range(fromCellRowOff, int(toCellRowOff)+1):
+					for c in range(fromCellColOff, toCellColOff+1):
+						# print("fetch data from", cell.calcOffset( (r, c) ))
+						rangeData.append(xlWB.getCell(cell.calcOffset( (r, c) ) ) )
+				return rangeData
+
 			elif t[0] == 'BINOP':
 				args = expand(t[2], cell)
 				print("binop", t[1], args)
+
 			elif t[0] == 'RELCELL':
 				# print("fetch data from cell", cell.calcOffset(t[1]))
-				fetchCell(xlWB.getCell(cell.calcOffset(t[1])))
+				return fetchCell(xlWB.getCell(cell.calcOffset(t[1])))
+
+			elif t[0] == 'NAME':
+				# first check if this is a named cell reference
+				namedCell = xlWB.getNamedCell(None, t[1])
+				if namedCell:
+					print("we have a named cell, so expand it..")
+					fetchCell(namedCell)
+				cell = xlWB.getCell(cell.calcOffset(t[1]))
+				print("CODE: ", cell.getVar(), "=", cell.getData())
+				return fetchCell()
+
+			elif t[0] == 'NUMBER':
+				print("We have a NUMBER value!!", t[1])
+				return t
+
+			elif t[0] == 'STRING':
+				print("We have a value!!", t[1])
+				return t
+
+			elif t[0] == 'SUBEXP':
+				print("Expanding sub expression")
+				ev = expand(t[1], cell)
+				return ev
+
 			else:
 				print("ERROR: type", t, "not supported yet!")
 				sys.exit(500)
 
 
-def main(sourceFileName):
+def main(sourceFileName, refresh=False):
 
-	global callStack, xlWB
+	global callStack, xlWB, declaredVars
+
+	declaredVars = []
 
 	try:
+		# if we are refreshing, raise an exception immediately
+		if refresh:
+			raise Exception("Refresh file")
 		xlpickle = open("xlstruct.pkl", "r+b")
 		U = pickle.Unpickler(xlpickle)
 		xlWB = U.load()
+		# finally check the name of the WB
+		if xlWB.getFileName() != sourceFileName:
+			raise Exception("Different file in pickle jar, must rerun parser")
 
 	except:
 		xlpickle = open("xlstruct.pkl", "w+b")
@@ -260,6 +377,7 @@ def main(sourceFileName):
 		xml.sax.parse(source, handler)
 
 		xlWB = handler.getWorkbook()
+		xlWB.setFileName(sourceFileName)
 		P = pickle.Pickler(xlpickle)
 		P.dump(xlWB)
 
@@ -268,8 +386,12 @@ def main(sourceFileName):
 	# example_string = "=IF(R[-277]C>R[-305]C-2*R[-303]C,'-',0.58*R[-319]C*PI()*R[-277]C*R[-303]C*R[-3]C/R[-404]C/1000)"
 	
 	callStack = []
-	fetchCell(cell)
+
+	cell = xlWB.getCell(("Sheet1", "2", "D"))
+	comp = fetchCell(cell)
+	print(comp)
 
 
 if __name__ == '__main__':
-	main('design_check.xml')
+	# main('design_check.xml')
+	main('stage2.xml', refresh=True)
